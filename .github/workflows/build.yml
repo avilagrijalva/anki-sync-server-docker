@@ -139,7 +139,6 @@ jobs:
         with:
           images: |
             ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'ghcr.io/f7zorn/anki-sync-server' || 'ghcr.io/f7zorn/anki-sync-server-dev' }}
-            ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'ghcr.io/z0rrn/anki-sync-server' || '' }}
             ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'docker.io/zorrn/anki-sync-server' || '' }}
           flavor: |
             latest=false
