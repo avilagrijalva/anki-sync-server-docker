@@ -16,7 +16,7 @@ This image is available for following architectures:
 
 The container and the actions are auto-updated whenever a new version of anki is released. This is done by a GitHub Action and I can forget this project exists :).
 
-You can find this image on [GHCR](https://github.com/f7zorn/anki-sync-server-docker/pkgs/container/anki-sync-server) and for legacy support on [Docker Hub](https://hub.docker.com/r/zorrn/anki-sync-server) and my old [GHCR](https://github.com/z0rrn/anki-sync-server-docker/pkgs/container/anki-sync-server).
+You can find this image on [GHCR](https://github.com/f7zorn/anki-sync-server-docker/pkgs/container/anki-sync-server) and for legacy support on [Docker Hub](https://hub.docker.com/r/zorrn/anki-sync-server) and my old [GHCR](https://github.com/orgs/z0rrn/packages/container/package/anki-sync-server) (may change anytime).
 
 Available tags:
 
