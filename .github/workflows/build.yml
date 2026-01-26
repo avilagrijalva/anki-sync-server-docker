@@ -101,6 +101,7 @@ jobs:
 
     permissions:
       contents: read # Normally added by default to checkout code
+      packages: ${{ github.ref == 'refs/heads/main' && 'none' || 'write' }} # Needed to push to GitHub Container Registry (on main GH_PUSH_GHCR_ANKI secret)
 
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -115,7 +116,7 @@ jobs:
         with:
           registry: ghcr.io
           username: f7zorn
-          password: ${{ secrets.GH_PUSH_GHCR_ANKI }}
+          password: ${{ github.ref == 'refs/heads/main' && secrets.GH_PUSH_GHCR_ANKI || secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
