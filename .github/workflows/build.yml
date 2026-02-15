@@ -15,7 +15,6 @@ on:
 
 env:
   anki_version: "25.09.2"
-  # Variables fijas para AMD64 / x86_64
   RUST_TARGET: "x86_64-unknown-linux-gnu"
   DOCKER_PLATFORM: "linux-amd64"
 
@@ -24,38 +23,39 @@ jobs:
     name: Build package (amd64)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Clone ankitects/anki repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@v4
         with:
           repository: ankitects/anki
           ref: ${{ env.anki_version }}
           path: ankitects-anki
           submodules: true
 
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+      - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Install C Compiler
         run: |
           sudo apt-get update
           sudo apt-get -y install gcc g++
 
-      - name: Build anki-sync-server with release profile
+      - name: Build anki-sync-server
         working-directory: ./ankitects-anki
         run: |
           rustup target add ${{ env.RUST_TARGET }}
-
           PROTOC=$(which protoc) \
           RUSTFLAGS='-C target-feature=+crt-static' \
           cargo build --release --target ${{ env.RUST_TARGET }} --package anki-sync-server
 
       - name: Upload binary as artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@v4
         with:
           name: anki-sync-server-${{ env.DOCKER_PLATFORM }}
           path: ${{ github.workspace }}/ankitects-anki/target/${{ env.RUST_TARGET }}/release/anki-sync-server
@@ -64,7 +64,7 @@ jobs:
 
       - name: Setup interactive ssh session
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.ssh_session }}
-        uses: Warpbuilds/action-debugger@4f5fd557c0ec91cdf9395b2853a3387b6cfd0738 # v1.3
+        uses: Warpbuilds/action-debugger@v1.3
         timeout-minutes: 20
         with:
           limit-access-to-actor: true
@@ -73,34 +73,32 @@ jobs:
     name: Build and push Docker image
     needs: [build-packages]
     runs-on: ubuntu-24.04
-
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@v4
 
-      # setup-qemu-action ELIMINADO (No hace falta para build nativo)
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Downloads all artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - name: Download artifact
+        uses: actions/download-artifact@v4
         with:
-          path: ${{ github.workspace }}/target
+          name: anki-sync-server-${{ env.DOCKER_PLATFORM }}
+          path: target/anki-sync-server-${{ env.DOCKER_PLATFORM }}
 
       - name: Docker get Metadata
         id: metadata
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/anki-sync-server${{ (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') && '' || '-dev' }}
@@ -117,23 +115,13 @@ jobs:
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=Anki Sync Server fork
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.created={{commit_date 'YYYY-MM-DDTHH:mm:ss.SSS[Z]'}}
-            org.opencontainers.image.revision={{sha}}
             org.opencontainers.image.version=${{ env.anki_version }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          # ÚNICA PLATAFORMA
           platforms: linux/amd64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-
-      - name: Setup interactive ssh session
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.ssh_session }}
-        uses: Warpbuilds/action-debugger@4f5fd557c0ec91cdf9395b2853a3387b6cfd0738 # v1.3
-        timeout-minutes: 20
-        with:
-          limit-access-to-actor: true
