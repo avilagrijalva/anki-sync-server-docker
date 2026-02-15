@@ -101,7 +101,7 @@ jobs:
 
     permissions:
       contents: read # Normally added by default to checkout code
-      packages: write # Needed to push to GitHub Container Registry (use if github.ref != 'refs/heads/main')
+      packages: write # Needed to push to GitHub Container Registry
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -115,16 +115,8 @@ jobs:
         if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
-          username: f7zorn
-          password: ${{ github.ref == 'refs/heads/main' && secrets.GH_PUSH_GHCR_ANKI || secrets.GITHUB_TOKEN }}
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        if: github.event_name != 'pull_request' && github.ref_name == 'main'
-        with:
-          registry: docker.io
-          username: zorrn
-          password: ${{ secrets.DOCKER_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Downloads all artifacts
         # Downloads to ${{ github.workspace }}/target/anki-sync-server-${{ matrix.docker_platform }}
@@ -137,10 +129,10 @@ jobs:
         id: metadata
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
+          # Define image name dynamically based on repository owner.
+          # Adds "-dev" suffix if not on main branch or if it is a PR.
           images: |
-            ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'ghcr.io/f7zorn/anki-sync-server' || 'ghcr.io/f7zorn/anki-sync-server-dev' }}
-            ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'ghcr.io/z0rrn/anki-sync-server' || '' }}
-            ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'docker.io/zorrn/anki-sync-server' || '' }}
+            ghcr.io/${{ github.repository_owner }}/anki-sync-server${{ (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') && '' || '-dev' }}
           flavor: |
             latest=false
             prefix=${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.number) || (github.ref_name != 'main' && format('branch-{0}-', github.ref_name) || '') }}
@@ -155,9 +147,9 @@ jobs:
             type=ref,event=pr
           labels: |
             org.opencontainers.image.title=Anki Sync Server
-            org.opencontainers.image.url=https://github.com/f7zorn/anki-sync-server-docker
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=Anki Sync Server is a third-party image that provides a server for syncing Anki decks.
-            org.opencontainers.image.source=https://github.com/f7zorn/anki-sync-server-docker
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.created={{commit_date 'YYYY-MM-DDTHH:mm:ss.SSS[Z]'}}
             org.opencontainers.image.revision={{sha}}
             org.opencontainers.image.version=${{ env.anki_version }}
