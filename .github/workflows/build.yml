@@ -3,7 +3,6 @@ name: Build and push image
 on:
   pull_request:
   push:
-    # Don't build if only docs changed
     paths-ignore:
       - "**.md"
   workflow_dispatch:
@@ -14,38 +13,16 @@ on:
         required: false
         default: false
 
-# Set anki-sync-server version
 env:
   anki_version: "25.09.2"
+  # Variables fijas para AMD64 / x86_64
+  RUST_TARGET: "x86_64-unknown-linux-gnu"
+  DOCKER_PLATFORM: "linux-amd64"
 
 jobs:
   build-packages:
-    name: Build packages
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            rust_target: x86_64-unknown-linux-gnu
-            c_compiler: gcc g++
-            cargo_linker_env: NOTHING=nothing
-            docker_platform: linux-amd64
-          - os: ubuntu-24.04
-            rust_target: i686-unknown-linux-gnu
-            c_compiler: gcc-i686-linux-gnu g++-i686-linux-gnu
-            cargo_linker_env: CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=i686-linux-gnu-gcc
-            docker_platform: linux-386
-          - os: ubuntu-24.04
-            rust_target: aarch64-unknown-linux-gnu
-            c_compiler: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-            cargo_linker_env: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-            docker_platform: linux-arm64
-          - os: ubuntu-24.04
-            rust_target: armv7-unknown-linux-gnueabihf
-            c_compiler: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-            cargo_linker_env: CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc
-            docker_platform: linux-armv7
-
+    name: Build package (amd64)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -66,27 +43,25 @@ jobs:
       - name: Install C Compiler
         run: |
           sudo apt-get update
-          sudo apt-get -y install ${{ matrix.c_compiler }}
+          sudo apt-get -y install gcc g++
 
-      # Install rust target in build directory (idk but otherwise it's not found)
       - name: Build anki-sync-server with release profile
         working-directory: ./ankitects-anki
         run: |
-          rustup target add ${{ matrix.rust_target }}
+          rustup target add ${{ env.RUST_TARGET }}
 
-          ${{ matrix.cargo_linker_env }} PROTOC=$(which protoc) \
+          PROTOC=$(which protoc) \
           RUSTFLAGS='-C target-feature=+crt-static' \
-          cargo build --release --target ${{ matrix.rust_target }} --package anki-sync-server
+          cargo build --release --target ${{ env.RUST_TARGET }} --package anki-sync-server
 
       - name: Upload binary as artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: anki-sync-server-${{ matrix.docker_platform }}
-          path: ${{ github.workspace }}/ankitects-anki/target/${{ matrix.rust_target }}/release/anki-sync-server
+          name: anki-sync-server-${{ env.DOCKER_PLATFORM }}
+          path: ${{ github.workspace }}/ankitects-anki/target/${{ env.RUST_TARGET }}/release/anki-sync-server
           if-no-files-found: error
           retention-days: 1
 
-      # Enable ssh debugging of manually-triggered workflows if the input option was provided
       - name: Setup interactive ssh session
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.ssh_session }}
         uses: Warpbuilds/action-debugger@4f5fd557c0ec91cdf9395b2853a3387b6cfd0738 # v1.3
@@ -100,13 +75,13 @@ jobs:
     runs-on: ubuntu-24.04
 
     permissions:
-      contents: read # Normally added by default to checkout code
-      packages: write # Needed to push to GitHub Container Registry
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      # setup-qemu-action ELIMINADO (No hace falta para build nativo)
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
@@ -119,8 +94,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Downloads all artifacts
-        # Downloads to ${{ github.workspace }}/target/anki-sync-server-${{ matrix.docker_platform }}
-        # So executable at ${{ github.workspace }}/target/anki-sync-server-${{ matrix.docker_platform }}/anki-sync-server
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: ${{ github.workspace }}/target
@@ -129,26 +102,20 @@ jobs:
         id: metadata
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          # Define image name dynamically based on repository owner.
-          # Adds "-dev" suffix if not on main branch or if it is a PR.
           images: |
             ghcr.io/${{ github.repository_owner }}/anki-sync-server${{ (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') && '' || '-dev' }}
           flavor: |
             latest=false
             prefix=${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.number) || (github.ref_name != 'main' && format('branch-{0}-', github.ref_name) || '') }}
           tags: |
-            # latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}},priority=950
-            # anki version
             type=raw,value=${{ env.anki_version }},priority=900
-            # git commit hash (12 characters)
             type=sha
-            # pr tag/number
             type=ref,event=pr
           labels: |
             org.opencontainers.image.title=Anki Sync Server
             org.opencontainers.image.url=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Anki Sync Server is a third-party image that provides a server for syncing Anki decks.
+            org.opencontainers.image.description=Anki Sync Server fork
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.created={{commit_date 'YYYY-MM-DDTHH:mm:ss.SSS[Z]'}}
             org.opencontainers.image.revision={{sha}}
@@ -159,11 +126,11 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          platforms: linux/amd64,linux/386,linux/arm64,linux/arm/v7
+          # ÚNICA PLATAFORMA
+          platforms: linux/amd64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
 
-      # Enable ssh debugging of manually-triggered workflows if the input option was provided
       - name: Setup interactive ssh session
         if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.ssh_session }}
         uses: Warpbuilds/action-debugger@4f5fd557c0ec91cdf9395b2853a3387b6cfd0738 # v1.3
